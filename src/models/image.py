@@ -1,4 +1,3 @@
-from abc import ABC, abstractmethod
 from typing import Dict, Any, Tuple
 import base64
 import mimetypes
@@ -8,6 +7,7 @@ import requests
 from http import HTTPStatus
 import dashscope
 from dashscope import ImageSynthesis
+from .base import ImageGenModel  # re-exported: adapters may import it from here or from .base
 from ..utils import get_logger
 from ..utils.endpoints import get_provider_base_url
 from ..utils.media_refs import MEDIA_REF_UNKNOWN, classify_media_ref
@@ -16,29 +16,6 @@ from ..utils.provider_media import resolve_media_input
 from ..utils.provider_registry import resolve_provider_backend
 
 logger = get_logger(__name__)
-
-class ImageGenModel(ABC):
-    """Abstract base class for image generation models."""
-    
-    def __init__(self, config: Dict[str, Any]):
-        self.config = config
-
-    @abstractmethod
-    def generate(self, prompt: str, output_path: str, **kwargs) -> Tuple[str, float]:
-        """
-        Generates an image from a prompt.
-        
-        Args:
-            prompt: The input text prompt.
-            output_path: The path to save the generated image.
-            **kwargs: Additional arguments.
-            
-        Returns:
-            A tuple containing:
-            - The path to the generated image file.
-            - The duration of the API generation process in seconds.
-        """
-        pass
 
 class WanxImageModel(ImageGenModel):
     def __init__(self, config):
