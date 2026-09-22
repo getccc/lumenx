@@ -3633,14 +3633,33 @@ class ComicGenPipeline:
     def get_script(self, script_id: str) -> Optional[Script]:
         return self.scripts.get(script_id)
 
+    @staticmethod
+    def _image_variant_fields(image_asset: Any) -> Tuple[Optional[list], Optional[str]]:
+        """Resolve the variant list + selected-id attribute name for a container.
+
+        Two shapes carry image variants: ``ImageAsset`` (variants /
+        selected_id) and ``AssetUnit`` (image_variants / selected_image_id).
+        Characters in the unified R2V flow use AssetUnit via
+        ``reference_sheet``, so helpers that assume only ImageAsset raise
+        AttributeError on the very asset the workflow revolves around.
+        """
+        if image_asset is None:
+            return None, None
+        if hasattr(image_asset, "variants"):
+            return image_asset.variants, "selected_id"
+        if hasattr(image_asset, "image_variants"):
+            return image_asset.image_variants, "selected_image_id"
+        return None, None
+
     def _select_variant_in_asset(self, image_asset: Any, variant_id: str) -> Any:
-        """Helper to select a variant in an ImageAsset. Returns the selected variant if found."""
-        if not image_asset or not image_asset.variants:
+        """Helper to select a variant in an ImageAsset/AssetUnit. Returns the selected variant if found."""
+        variants, selected_attr = self._image_variant_fields(image_asset)
+        if not variants:
             return None
-            
-        for variant in image_asset.variants:
+
+        for variant in variants:
             if variant.id == variant_id:
-                image_asset.selected_id = variant_id
+                setattr(image_asset, selected_attr, variant_id)
                 return variant
         return None
 
@@ -3866,9 +3885,10 @@ class ComicGenPipeline:
 
     def _set_variant_favorite(self, image_asset: Any, variant_id: str, is_favorited: bool) -> bool:
         """Helper to set favorite status of a variant. Returns True if found."""
-        if not image_asset or not image_asset.variants:
+        variants, _ = self._image_variant_fields(image_asset)
+        if not variants:
             return False
-        for v in image_asset.variants:
+        for v in variants:
             if v.id == variant_id:
                 v.is_favorited = is_favorited
                 return True
