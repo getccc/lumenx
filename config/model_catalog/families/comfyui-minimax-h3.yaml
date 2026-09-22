@@ -1,0 +1,97 @@
+family: comfyui-minimax-h3
+display_name: "MiniMax-H3 (ComfyUI 自托管)"
+provider: comfyui
+routing_prefixes:
+  - comfyui-minimax-h3
+supported_backends:
+  - comfyui
+default_backend: comfyui
+credential_sources:
+  comfyui:
+    - COMFYUI_VIDEO_HOST
+supported_modalities:
+  - i2v
+  - r2v
+transport:
+  image_input_mode:
+    comfyui: comfyui_upload_image
+  audio_input_mode:
+    comfyui: comfyui_upload_file
+  reference_video_input_mode:
+    comfyui: comfyui_upload_file
+docs:
+  official_snapshot_ids:
+    - comfyui/minimax-h3-ref2va/2026-09-22
+models:
+  - id: comfyui-minimax-h3/video
+    display_name: MiniMax-H3 Video (本地)
+    description: >-
+      自托管 ComfyUI 上的 MiniMax-H3 Ref2VA，音视频联合生成。
+      R2V 最多 9 张参考图，提示词里用 <Picture N> 指代（adapter 会自动改写
+      LumenX 的 [characterN:名字] 标签）。
+    status: active
+    release_stage: stable
+    docs:
+      context_hub_doc_ids:
+        - comfyui/minimax-h3-ref2va
+    runtime:
+      comfyui:
+        gateway: comfyui
+        workflow: minimax_h3_video
+    modes:
+      r2v:
+        legacy_id: comfyui-minimax-h3-r2v
+        display_name: MiniMax-H3 R2V (本地)
+        description: 多参考图生视频，自带同步音轨
+        capabilities: [r2v]
+        ui:
+          selection_group: r2v
+          visible_in: [project_settings, series_settings, video_sidebar, global_settings]
+          order: 200
+          badges: [new]
+        duration:
+          # 训练区间约 124-362 帧 @24fps，即 5-15 秒；更短能跑但未经验证
+          type: slider
+          min: 3
+          max: 15
+          step: 1
+          default: 5
+        params:
+          resolution:
+            # H3 用的是像素预算而非短边。实测 3 秒片段（Apple Silicon，
+            # 8 步 Parasyte Turbo）：360p≈233s，480p≈432s。
+            # 480p 起身份保真才稳得住，360p 只适合做节奏草稿。
+            options: [360p, 480p, 720p]
+            default: 480p
+          seed: true
+          # R2V 节点没有 negative 输入；本地采样也不做提示词扩写和水印
+          negativePrompt: false
+          promptExtend: false
+          watermark: false
+        inputs:
+          reference_images:
+            max: 9
+      i2v:
+        legacy_id: comfyui-minimax-h3-i2v
+        display_name: MiniMax-H3 I2V (本地)
+        description: 首帧生视频，支持首尾帧
+        capabilities: [i2v]
+        ui:
+          selection_group: i2v
+          visible_in: [project_settings, series_settings, video_sidebar, global_settings]
+          order: 200
+          badges: [new]
+        duration:
+          type: slider
+          min: 3
+          max: 15
+          step: 1
+          default: 5
+        params:
+          resolution:
+            options: [360p, 480p, 720p]
+            default: 480p
+          seed: true
+          negativePrompt: false
+          promptExtend: false
+          watermark: false

@@ -1,6 +1,9 @@
 {
   "compat": {
     "legacy_model_ids": {
+      "comfyui-minimax-h3-i2v": "comfyui-minimax-h3/video#i2v",
+      "comfyui-minimax-h3-r2v": "comfyui-minimax-h3/video#r2v",
+      "comfyui-qwen-image-2.1": "comfyui-qwen-image/comfyui-qwen-image-2.1#image",
       "gpt-image-2": "gpt-image/gpt-image-2#image",
       "happyhorse-1.0-video-edit": "happyhorse/happyhorse-1.0-video-edit#i2v",
       "happyhorse-1.1-i2v": "happyhorse/happyhorse-1.1-video#i2v",
@@ -59,6 +62,90 @@
     }
   },
   "families": {
+    "comfyui-minimax-h3": {
+      "backend_env_key": null,
+      "credential_sources": {
+        "comfyui": [
+          "COMFYUI_VIDEO_HOST"
+        ]
+      },
+      "default_backend": "comfyui",
+      "display_name": "MiniMax-H3 (ComfyUI 自托管)",
+      "docs": {
+        "official_snapshot_ids": [
+          "comfyui/minimax-h3-ref2va/2026-09-22"
+        ]
+      },
+      "family": "comfyui-minimax-h3",
+      "models": [
+        "comfyui-minimax-h3-i2v",
+        "comfyui-minimax-h3-r2v"
+      ],
+      "provider": "comfyui",
+      "routing_prefixes": [
+        "comfyui-minimax-h3"
+      ],
+      "supported_backends": [
+        "comfyui"
+      ],
+      "supported_modalities": [
+        "i2v",
+        "r2v"
+      ],
+      "transport": {
+        "audio_input_mode": {
+          "comfyui": "comfyui_upload_file"
+        },
+        "image_input_mode": {
+          "comfyui": "comfyui_upload_image"
+        },
+        "reference_video_input_mode": {
+          "comfyui": "comfyui_upload_file"
+        }
+      }
+    },
+    "comfyui-qwen-image": {
+      "backend_env_key": null,
+      "credential_sources": {
+        "comfyui": [
+          "COMFYUI_IMAGE_HOST"
+        ]
+      },
+      "default_backend": "comfyui",
+      "display_name": "Qwen Image (ComfyUI 自托管)",
+      "docs": {
+        "official_snapshot_ids": [
+          "comfyui/qwen-image-2.1/2026-09-22"
+        ]
+      },
+      "family": "comfyui-qwen-image",
+      "models": [
+        "comfyui-qwen-image-2.1"
+      ],
+      "provider": "comfyui",
+      "routing_prefixes": [
+        "comfyui-qwen-image"
+      ],
+      "supported_backends": [
+        "comfyui"
+      ],
+      "supported_modalities": [
+        "t2i",
+        "i2i",
+        "image"
+      ],
+      "transport": {
+        "audio_input_mode": {
+          "comfyui": "comfyui_upload_file"
+        },
+        "image_input_mode": {
+          "comfyui": "comfyui_upload_image"
+        },
+        "reference_video_input_mode": {
+          "comfyui": "comfyui_upload_file"
+        }
+      }
+    },
     "gpt-image": {
       "backend_env_key": null,
       "credential_sources": {
@@ -452,6 +539,123 @@
     }
   },
   "model_lines": {
+    "comfyui-minimax-h3/video": {
+      "backend_env_key": null,
+      "credential_sources": {
+        "comfyui": [
+          "COMFYUI_VIDEO_HOST"
+        ]
+      },
+      "default_backend": "comfyui",
+      "description": "自托管 ComfyUI 上的 MiniMax-H3 Ref2VA，音视频联合生成。 R2V 最多 9 张参考图，提示词里用 <Picture N> 指代（adapter 会自动改写 LumenX 的 [characterN:名字] 标签）。",
+      "display_name": "MiniMax-H3 Video (本地)",
+      "docs": {
+        "context_hub_doc_ids": [
+          "comfyui/minimax-h3-ref2va"
+        ],
+        "official_snapshot_ids": [
+          "comfyui/minimax-h3-ref2va/2026-09-22"
+        ]
+      },
+      "family": "comfyui-minimax-h3",
+      "id": "comfyui-minimax-h3/video",
+      "legacy_model_ids": [
+        "comfyui-minimax-h3-i2v",
+        "comfyui-minimax-h3-r2v"
+      ],
+      "modes": [
+        "comfyui-minimax-h3/video#i2v",
+        "comfyui-minimax-h3/video#r2v"
+      ],
+      "provider": "comfyui",
+      "release_stage": "stable",
+      "routing_prefixes": [
+        "comfyui-minimax-h3"
+      ],
+      "runtime": {
+        "comfyui": {
+          "gateway": "comfyui",
+          "workflow": "minimax_h3_video"
+        }
+      },
+      "status": "active",
+      "supported_backends": [
+        "comfyui"
+      ],
+      "supported_modalities": [
+        "i2v",
+        "r2v"
+      ],
+      "transport": {
+        "audio_input_mode": {
+          "comfyui": "comfyui_upload_file"
+        },
+        "image_input_mode": {
+          "comfyui": "comfyui_upload_image"
+        },
+        "reference_video_input_mode": {
+          "comfyui": "comfyui_upload_file"
+        }
+      }
+    },
+    "comfyui-qwen-image/comfyui-qwen-image-2.1": {
+      "backend_env_key": null,
+      "credential_sources": {
+        "comfyui": [
+          "COMFYUI_IMAGE_HOST"
+        ]
+      },
+      "default_backend": "comfyui",
+      "description": "自托管 ComfyUI 上的 Qwen-Image 2.1，支持文生图与最多 16 张参考图的图生图",
+      "display_name": "Qwen Image 2.1 (本地)",
+      "docs": {
+        "context_hub_doc_ids": [
+          "comfyui/qwen-image-2.1"
+        ],
+        "official_snapshot_ids": [
+          "comfyui/qwen-image-2.1/2026-09-22"
+        ]
+      },
+      "family": "comfyui-qwen-image",
+      "id": "comfyui-qwen-image/comfyui-qwen-image-2.1",
+      "legacy_model_ids": [
+        "comfyui-qwen-image-2.1"
+      ],
+      "modes": [
+        "comfyui-qwen-image/comfyui-qwen-image-2.1#image"
+      ],
+      "provider": "comfyui",
+      "release_stage": "stable",
+      "routing_prefixes": [
+        "comfyui-qwen-image"
+      ],
+      "runtime": {
+        "comfyui": {
+          "gateway": "comfyui",
+          "workflow": "qwen_image_2.1"
+        }
+      },
+      "status": "active",
+      "supported_backends": [
+        "comfyui"
+      ],
+      "supported_modalities": [
+        "t2i",
+        "i2i",
+        "image"
+      ],
+      "transport": {
+        "audio_input_mode": {
+          "comfyui": "comfyui_upload_file"
+        },
+        "image_input_mode": {
+          "comfyui": "comfyui_upload_image"
+        },
+        "reference_video_input_mode": {
+          "comfyui": "comfyui_upload_file"
+        }
+      }
+    },
     "gpt-image/gpt-image-2": {
       "backend_env_key": null,
       "credential_sources": {
@@ -2141,6 +2345,252 @@
     }
   },
   "models": {
+    "comfyui-minimax-h3-i2v": {
+      "backend_env_key": null,
+      "capabilities": [
+        "i2v"
+      ],
+      "credential_sources": {
+        "comfyui": [
+          "COMFYUI_VIDEO_HOST"
+        ]
+      },
+      "default_backend": "comfyui",
+      "description": "首帧生视频，支持首尾帧",
+      "display_name": "MiniMax-H3 I2V (本地)",
+      "docs": {
+        "context_hub_doc_ids": [
+          "comfyui/minimax-h3-ref2va"
+        ],
+        "official_snapshot_ids": [
+          "comfyui/minimax-h3-ref2va/2026-09-22"
+        ]
+      },
+      "duration": {
+        "default": 5,
+        "max": 15,
+        "min": 3,
+        "step": 1,
+        "type": "slider"
+      },
+      "family": "comfyui-minimax-h3",
+      "id": "comfyui-minimax-h3-i2v",
+      "inputs": {},
+      "params": {
+        "negativePrompt": false,
+        "promptExtend": false,
+        "resolution": {
+          "default": "480p",
+          "options": [
+            "360p",
+            "480p",
+            "720p"
+          ]
+        },
+        "seed": true,
+        "watermark": false
+      },
+      "provider": "comfyui",
+      "release_stage": "stable",
+      "routing_prefixes": [
+        "comfyui-minimax-h3"
+      ],
+      "status": "active",
+      "supported_backends": [
+        "comfyui"
+      ],
+      "transport": {
+        "audio_input_mode": {
+          "comfyui": "comfyui_upload_file"
+        },
+        "image_input_mode": {
+          "comfyui": "comfyui_upload_image"
+        },
+        "reference_video_input_mode": {
+          "comfyui": "comfyui_upload_file"
+        }
+      },
+      "ui": {
+        "badges": [
+          "new"
+        ],
+        "order": 200,
+        "recommended": false,
+        "selection_group": "i2v",
+        "visible_in": [
+          "project_settings",
+          "series_settings",
+          "video_sidebar",
+          "global_settings"
+        ]
+      }
+    },
+    "comfyui-minimax-h3-r2v": {
+      "backend_env_key": null,
+      "capabilities": [
+        "r2v"
+      ],
+      "credential_sources": {
+        "comfyui": [
+          "COMFYUI_VIDEO_HOST"
+        ]
+      },
+      "default_backend": "comfyui",
+      "description": "多参考图生视频，自带同步音轨",
+      "display_name": "MiniMax-H3 R2V (本地)",
+      "docs": {
+        "context_hub_doc_ids": [
+          "comfyui/minimax-h3-ref2va"
+        ],
+        "official_snapshot_ids": [
+          "comfyui/minimax-h3-ref2va/2026-09-22"
+        ]
+      },
+      "duration": {
+        "default": 5,
+        "max": 15,
+        "min": 3,
+        "step": 1,
+        "type": "slider"
+      },
+      "family": "comfyui-minimax-h3",
+      "id": "comfyui-minimax-h3-r2v",
+      "inputs": {
+        "reference_images": {
+          "max": 9
+        }
+      },
+      "params": {
+        "negativePrompt": false,
+        "promptExtend": false,
+        "resolution": {
+          "default": "480p",
+          "options": [
+            "360p",
+            "480p",
+            "720p"
+          ]
+        },
+        "seed": true,
+        "watermark": false
+      },
+      "provider": "comfyui",
+      "release_stage": "stable",
+      "routing_prefixes": [
+        "comfyui-minimax-h3"
+      ],
+      "status": "active",
+      "supported_backends": [
+        "comfyui"
+      ],
+      "transport": {
+        "audio_input_mode": {
+          "comfyui": "comfyui_upload_file"
+        },
+        "image_input_mode": {
+          "comfyui": "comfyui_upload_image"
+        },
+        "reference_video_input_mode": {
+          "comfyui": "comfyui_upload_file"
+        }
+      },
+      "ui": {
+        "badges": [
+          "new"
+        ],
+        "order": 200,
+        "recommended": false,
+        "selection_group": "r2v",
+        "visible_in": [
+          "project_settings",
+          "series_settings",
+          "video_sidebar",
+          "global_settings"
+        ]
+      }
+    },
+    "comfyui-qwen-image-2.1": {
+      "backend_env_key": null,
+      "capabilities": [
+        "t2i",
+        "i2i"
+      ],
+      "credential_sources": {
+        "comfyui": [
+          "COMFYUI_IMAGE_HOST"
+        ]
+      },
+      "default_backend": "comfyui",
+      "description": "自托管 ComfyUI 上的 Qwen-Image 2.1，支持文生图与最多 16 张参考图的图生图",
+      "display_name": "Qwen Image 2.1 (本地)",
+      "docs": {
+        "context_hub_doc_ids": [
+          "comfyui/qwen-image-2.1"
+        ],
+        "official_snapshot_ids": [
+          "comfyui/qwen-image-2.1/2026-09-22"
+        ]
+      },
+      "duration": null,
+      "family": "comfyui-qwen-image",
+      "id": "comfyui-qwen-image-2.1",
+      "inputs": {
+        "reference_images": {
+          "max": 16
+        }
+      },
+      "params": {
+        "negativePrompt": true,
+        "promptExtend": false,
+        "seed": true,
+        "size": {
+          "default": "1024*1024",
+          "options": [
+            "1024*1024",
+            "768*1152",
+            "832*1216",
+            "1152*768",
+            "1536*864",
+            "1328*1328",
+            "2048*2048"
+          ]
+        },
+        "watermark": false
+      },
+      "provider": "comfyui",
+      "release_stage": "stable",
+      "routing_prefixes": [
+        "comfyui-qwen-image"
+      ],
+      "status": "active",
+      "supported_backends": [
+        "comfyui"
+      ],
+      "transport": {
+        "audio_input_mode": {
+          "comfyui": "comfyui_upload_file"
+        },
+        "image_input_mode": {
+          "comfyui": "comfyui_upload_image"
+        },
+        "reference_video_input_mode": {
+          "comfyui": "comfyui_upload_file"
+        }
+      },
+      "ui": {
+        "badges": [
+          "new"
+        ],
+        "order": 200,
+        "recommended": false,
+        "selection_group": "image",
+        "visible_in": [
+          "project_settings",
+          "series_settings",
+          "global_settings"
+        ]
+      }
+    },
     "gpt-image-2": {
       "backend_env_key": null,
       "capabilities": [
@@ -5182,6 +5632,279 @@
     }
   },
   "modes": {
+    "comfyui-minimax-h3/video#i2v": {
+      "backend_env_key": null,
+      "capabilities": [
+        "i2v"
+      ],
+      "credential_sources": {
+        "comfyui": [
+          "COMFYUI_VIDEO_HOST"
+        ]
+      },
+      "default_backend": "comfyui",
+      "description": "首帧生视频，支持首尾帧",
+      "display_name": "MiniMax-H3 I2V (本地)",
+      "docs": {
+        "context_hub_doc_ids": [
+          "comfyui/minimax-h3-ref2va"
+        ],
+        "official_snapshot_ids": [
+          "comfyui/minimax-h3-ref2va/2026-09-22"
+        ]
+      },
+      "duration": {
+        "default": 5,
+        "max": 15,
+        "min": 3,
+        "step": 1,
+        "type": "slider"
+      },
+      "family": "comfyui-minimax-h3",
+      "id": "comfyui-minimax-h3/video#i2v",
+      "inputs": {},
+      "legacy_model_id": "comfyui-minimax-h3-i2v",
+      "mode": "i2v",
+      "model_line_id": "comfyui-minimax-h3/video",
+      "params": {
+        "negativePrompt": false,
+        "promptExtend": false,
+        "resolution": {
+          "default": "480p",
+          "options": [
+            "360p",
+            "480p",
+            "720p"
+          ]
+        },
+        "seed": true,
+        "watermark": false
+      },
+      "provider": "comfyui",
+      "release_stage": "stable",
+      "routing_prefixes": [
+        "comfyui-minimax-h3"
+      ],
+      "runtime": {
+        "comfyui": {
+          "gateway": "comfyui",
+          "workflow": "minimax_h3_video"
+        }
+      },
+      "status": "active",
+      "supported_backends": [
+        "comfyui"
+      ],
+      "transport": {
+        "audio_input_mode": {
+          "comfyui": "comfyui_upload_file"
+        },
+        "image_input_mode": {
+          "comfyui": "comfyui_upload_image"
+        },
+        "reference_video_input_mode": {
+          "comfyui": "comfyui_upload_file"
+        }
+      },
+      "ui": {
+        "badges": [
+          "new"
+        ],
+        "order": 200,
+        "recommended": false,
+        "selection_group": "i2v",
+        "visible_in": [
+          "project_settings",
+          "series_settings",
+          "video_sidebar",
+          "global_settings"
+        ]
+      }
+    },
+    "comfyui-minimax-h3/video#r2v": {
+      "backend_env_key": null,
+      "capabilities": [
+        "r2v"
+      ],
+      "credential_sources": {
+        "comfyui": [
+          "COMFYUI_VIDEO_HOST"
+        ]
+      },
+      "default_backend": "comfyui",
+      "description": "多参考图生视频，自带同步音轨",
+      "display_name": "MiniMax-H3 R2V (本地)",
+      "docs": {
+        "context_hub_doc_ids": [
+          "comfyui/minimax-h3-ref2va"
+        ],
+        "official_snapshot_ids": [
+          "comfyui/minimax-h3-ref2va/2026-09-22"
+        ]
+      },
+      "duration": {
+        "default": 5,
+        "max": 15,
+        "min": 3,
+        "step": 1,
+        "type": "slider"
+      },
+      "family": "comfyui-minimax-h3",
+      "id": "comfyui-minimax-h3/video#r2v",
+      "inputs": {
+        "reference_images": {
+          "max": 9
+        }
+      },
+      "legacy_model_id": "comfyui-minimax-h3-r2v",
+      "mode": "r2v",
+      "model_line_id": "comfyui-minimax-h3/video",
+      "params": {
+        "negativePrompt": false,
+        "promptExtend": false,
+        "resolution": {
+          "default": "480p",
+          "options": [
+            "360p",
+            "480p",
+            "720p"
+          ]
+        },
+        "seed": true,
+        "watermark": false
+      },
+      "provider": "comfyui",
+      "release_stage": "stable",
+      "routing_prefixes": [
+        "comfyui-minimax-h3"
+      ],
+      "runtime": {
+        "comfyui": {
+          "gateway": "comfyui",
+          "workflow": "minimax_h3_video"
+        }
+      },
+      "status": "active",
+      "supported_backends": [
+        "comfyui"
+      ],
+      "transport": {
+        "audio_input_mode": {
+          "comfyui": "comfyui_upload_file"
+        },
+        "image_input_mode": {
+          "comfyui": "comfyui_upload_image"
+        },
+        "reference_video_input_mode": {
+          "comfyui": "comfyui_upload_file"
+        }
+      },
+      "ui": {
+        "badges": [
+          "new"
+        ],
+        "order": 200,
+        "recommended": false,
+        "selection_group": "r2v",
+        "visible_in": [
+          "project_settings",
+          "series_settings",
+          "video_sidebar",
+          "global_settings"
+        ]
+      }
+    },
+    "comfyui-qwen-image/comfyui-qwen-image-2.1#image": {
+      "backend_env_key": null,
+      "capabilities": [
+        "t2i",
+        "i2i"
+      ],
+      "credential_sources": {
+        "comfyui": [
+          "COMFYUI_IMAGE_HOST"
+        ]
+      },
+      "default_backend": "comfyui",
+      "description": "自托管 ComfyUI 上的 Qwen-Image 2.1，支持文生图与最多 16 张参考图的图生图",
+      "display_name": "Qwen Image 2.1 (本地)",
+      "docs": {
+        "context_hub_doc_ids": [
+          "comfyui/qwen-image-2.1"
+        ],
+        "official_snapshot_ids": [
+          "comfyui/qwen-image-2.1/2026-09-22"
+        ]
+      },
+      "duration": null,
+      "family": "comfyui-qwen-image",
+      "id": "comfyui-qwen-image/comfyui-qwen-image-2.1#image",
+      "inputs": {
+        "reference_images": {
+          "max": 16
+        }
+      },
+      "legacy_model_id": "comfyui-qwen-image-2.1",
+      "mode": "image",
+      "model_line_id": "comfyui-qwen-image/comfyui-qwen-image-2.1",
+      "params": {
+        "negativePrompt": true,
+        "promptExtend": false,
+        "seed": true,
+        "size": {
+          "default": "1024*1024",
+          "options": [
+            "1024*1024",
+            "768*1152",
+            "832*1216",
+            "1152*768",
+            "1536*864",
+            "1328*1328",
+            "2048*2048"
+          ]
+        },
+        "watermark": false
+      },
+      "provider": "comfyui",
+      "release_stage": "stable",
+      "routing_prefixes": [
+        "comfyui-qwen-image"
+      ],
+      "runtime": {
+        "comfyui": {
+          "gateway": "comfyui",
+          "workflow": "qwen_image_2.1"
+        }
+      },
+      "status": "active",
+      "supported_backends": [
+        "comfyui"
+      ],
+      "transport": {
+        "audio_input_mode": {
+          "comfyui": "comfyui_upload_file"
+        },
+        "image_input_mode": {
+          "comfyui": "comfyui_upload_image"
+        },
+        "reference_video_input_mode": {
+          "comfyui": "comfyui_upload_file"
+        }
+      },
+      "ui": {
+        "badges": [
+          "new"
+        ],
+        "order": 200,
+        "recommended": false,
+        "selection_group": "image",
+        "visible_in": [
+          "project_settings",
+          "series_settings",
+          "global_settings"
+        ]
+      }
+    },
     "gpt-image/gpt-image-2#image": {
       "backend_env_key": null,
       "capabilities": [
