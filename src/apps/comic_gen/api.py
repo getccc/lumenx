@@ -3926,7 +3926,26 @@ def get_env_config():
             for field in SECRET_FIELDS
         }
 
+        # Whether a generation provider *other than DashScope* is usable.
+        # Drives the frontend's required-field gate: a fully self-hosted
+        # deployment (ComfyUI + IndexTTS) has no DashScope key and must not
+        # be blocked behind a dialog asking for one.
+        comfyui_image_host = (os.getenv("COMFYUI_IMAGE_HOST", "") or "").strip()
+        comfyui_video_host = (os.getenv("COMFYUI_VIDEO_HOST", "") or "").strip()
+        alternative_provider_configured = bool(
+            comfyui_image_host
+            or comfyui_video_host
+            or secrets_configured.get("MULEROUTER_API_KEY")
+            or _check_mulerun_cli_status()
+        )
+
         return {
+            # Self-hosted provider endpoints (not secrets — plain host:port).
+            "COMFYUI_IMAGE_HOST": comfyui_image_host,
+            "COMFYUI_VIDEO_HOST": comfyui_video_host,
+            "INDEXTTS_HOST": (os.getenv("INDEXTTS_HOST", "") or "").strip(),
+            "TTS_PROVIDER": (os.getenv("TTS_PROVIDER", "dashscope") or "dashscope").strip().lower(),
+            "alternative_provider_configured": alternative_provider_configured,
             # Masked secrets — never plaintext.
             "DASHSCOPE_API_KEY": _mask_secret(os.getenv("DASHSCOPE_API_KEY")),
             "ALIBABA_CLOUD_ACCESS_KEY_ID": _mask_secret(os.getenv("ALIBABA_CLOUD_ACCESS_KEY_ID")),
