@@ -42,7 +42,7 @@ models:
     ui:
       selection_group: image
       visible_in: [project_settings, series_settings, global_settings]
-      order: 200
+      order: 50
       badges: [new]
     params:
       size:

@@ -47,7 +47,7 @@ models:
         ui:
           selection_group: r2v
           visible_in: [project_settings, series_settings, video_sidebar, global_settings]
-          order: 200
+          order: 50
           badges: [new]
         duration:
           # 训练区间约 124-362 帧 @24fps，即 5-15 秒；更短能跑但未经验证
@@ -79,7 +79,7 @@ models:
         ui:
           selection_group: i2v
           visible_in: [project_settings, series_settings, video_sidebar, global_settings]
-          order: 200
+          order: 50
           badges: [new]
         duration:
           type: slider

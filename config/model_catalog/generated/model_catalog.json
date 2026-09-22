@@ -2414,7 +2414,7 @@
         "badges": [
           "new"
         ],
-        "order": 200,
+        "order": 50,
         "recommended": false,
         "selection_group": "i2v",
         "visible_in": [
@@ -2498,7 +2498,7 @@
         "badges": [
           "new"
         ],
-        "order": 200,
+        "order": 50,
         "recommended": false,
         "selection_group": "r2v",
         "visible_in": [
@@ -2581,7 +2581,7 @@
         "badges": [
           "new"
         ],
-        "order": 200,
+        "order": 50,
         "recommended": false,
         "selection_group": "image",
         "visible_in": [
@@ -5710,7 +5710,7 @@
         "badges": [
           "new"
         ],
-        "order": 200,
+        "order": 50,
         "recommended": false,
         "selection_group": "i2v",
         "visible_in": [
@@ -5803,7 +5803,7 @@
         "badges": [
           "new"
         ],
-        "order": 200,
+        "order": 50,
         "recommended": false,
         "selection_group": "r2v",
         "visible_in": [
@@ -5895,7 +5895,7 @@
         "badges": [
           "new"
         ],
-        "order": 200,
+        "order": 50,
         "recommended": false,
         "selection_group": "image",
         "visible_in": [
