@@ -107,27 +107,15 @@ class AudioGenerator:
         3 tabs (系统音色 / 我的复刻 / 我的设计) with dialect/international
         sub-groupings inside 系统音色.
         """
-        if self.tts and self.tts_provider == 'indextts':
-            # IndexTTS ships no system voices — every voice is a clone of a
-            # reference clip, so the whole list is origin="clone".
-            try:
-                return [
-                    {
-                        "id": voice["id"],
-                        "name": voice["name"],
-                        "gender": "Unknown",
-                        "model": "indextts-2.5",
-                        "family": "indextts",
-                        "supports_instruction": True,
-                        "dialect": None,
-                        "lang_primary": "zh",
-                        "origin": "clone",
-                    }
-                    for voice in self.tts.list_voices()
-                ]
-            except Exception as e:
-                logger.warning(f"Could not list IndexTTS voices: {e}")
-                return []
+        if self.tts_provider == 'indextts':
+            # IndexTTS has no system voice catalogue: every voice is cloned
+            # from a reference clip. Those live on Series.custom_voices[] and
+            # reach the picker through /series/{id}/custom_voices, not here.
+            #
+            # Presets that exist only on the IndexTTS server are deliberately
+            # not surfaced — LumenX keeps the reference clip itself, and a
+            # voice with no local clip would fail at synthesis time.
+            return []
 
         if self.tts:
             voices_dict = TTSProcessor.list_voices()

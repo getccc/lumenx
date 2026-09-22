@@ -4344,6 +4344,12 @@ class ComicGenPipeline:
             if not series:
                 raise ValueError(f"Series not found: {series_id}")
 
+            # Self-hosted TTS clones locally instead of minting a cloud
+            # voice_id. Same user-facing flow (upload a clip, get a voice in
+            # the 我的复刻 tab), different mechanics.
+            if getattr(self.audio_generator, "tts_provider", "") == "indextts":
+                return self._create_voice_clone_indextts(series, audio_url, label)
+
             api_key = os.getenv("DASHSCOPE_API_KEY")
             if not api_key:
                 raise RuntimeError("DASHSCOPE_API_KEY not configured")
@@ -4394,6 +4400,53 @@ class ComicGenPipeline:
             self._save_series_data_unlocked()
             logger.info(f"[voice/clone] success voice_id={voice_id} stored on series={series_id}")
             return custom
+
+    def _create_voice_clone_indextts(
+        self, series: 'Series', audio_url: str, label: str
+    ) -> 'CustomVoice':
+        """Register a reference clip with the self-hosted IndexTTS engine.
+
+        Must be called with ``self._save_lock`` held (create_voice_clone does).
+
+        IndexTTS clones a voice from an audio clip rather than minting a
+        server-side id, and its presets cannot be read back over the API, so
+        LumenX keeps the clip itself as the source of truth — the returned
+        CustomVoice id is the local voice id the engine resolves against.
+        """
+        import re
+        from .models import CustomVoice
+
+        engine = self.audio_generator.tts
+        if engine is None:
+            raise RuntimeError("IndexTTS engine is not available; check INDEXTTS_HOST")
+
+        local_path = self._resolve_media_path(audio_url)
+        if not local_path or not os.path.exists(local_path):
+            raise RuntimeError(f"Reference audio not found locally: {audio_url}")
+
+        # The id doubles as a filename under voice_dir and as the preset name,
+        # so strip anything that is not safe in a path. CJK is kept — IndexTTS
+        # accepts it and creators name voices in their own language.
+        slug = re.sub(r"[^\w一-鿿-]+", "_", label).strip("_") or "voice"
+        voice_id = f"{slug}_{uuid.uuid4().hex[:6]}"
+
+        engine.clone_voice(voice_id, local_path)
+
+        custom = CustomVoice(
+            id=voice_id,
+            label=label,
+            origin="clone",
+            target_model="indextts-2.5",
+            family="indextts",
+            source_audio_url=audio_url,
+        )
+        if series.custom_voices is None:
+            series.custom_voices = []
+        series.custom_voices.append(custom)
+        series.updated_at = time.time()
+        self._save_series_data_unlocked()
+        logger.info(f"[voice/clone] IndexTTS voice {voice_id!r} stored on series={series.id}")
+        return custom
 
     def list_custom_voices(self, series_id: str) -> List['CustomVoice']:
         """Return all custom voices in a series (clones + designs).
@@ -4454,6 +4507,15 @@ class ComicGenPipeline:
         """
         import requests
         import hashlib
+
+        # IndexTTS clones a voice from a reference clip; it cannot mint one
+        # from a text description. Say so plainly instead of failing later
+        # on a missing DashScope key, which reads as a misconfiguration.
+        if getattr(self.audio_generator, "tts_provider", "") == "indextts":
+            raise RuntimeError(
+                "当前 TTS 引擎是 IndexTTS，它只能用参考音频复刻音色，不支持用文字描述生成音色。"
+                "请改用「声音复刻」上传一段参考音频，或把 TTS_PROVIDER 切回 dashscope。"
+            )
 
         api_key = os.getenv("DASHSCOPE_API_KEY")
         if not api_key:

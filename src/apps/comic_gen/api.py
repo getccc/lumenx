@@ -2778,7 +2778,7 @@ def voice_preview(request: VoicePreviewRequest):
 
     Cache key = md5(voice_id|text|speed|pitch|volume|instructions). First
     call triggers TTSProcessor.synthesize() and writes to
-    output/cache/voice_preview/{key}.mp3. Subsequent identical calls
+    output/cache/voice_preview/{key}.{mp3|wav}. Subsequent identical calls
     return the cached URL instantly.
 
     PR-3h #2: handles CUSTOM voices (clones/designs) by looking up
@@ -2804,7 +2804,11 @@ def voice_preview(request: VoicePreviewRequest):
     cache_key = hashlib.md5(
         f"{request.voice_id}|{request.text}|{request.speed}|{request.pitch}|{request.volume}|{request.instructions or ''}".encode("utf-8")
     ).hexdigest()
-    cache_path = os.path.join(cache_dir, f"{cache_key}.mp3")
+    # DashScope CosyVoice/Qwen3 return mp3; IndexTTS returns wav. Keep the
+    # cached file's extension honest so the <audio> element and any later
+    # ffmpeg step see the format they actually get.
+    audio_ext = "wav" if getattr(pipeline.audio_generator, "tts_provider", "") == "indextts" else "mp3"
+    cache_path = os.path.join(cache_dir, f"{cache_key}.{audio_ext}")
     cached = os.path.exists(cache_path)
 
     if not cached:
@@ -2827,7 +2831,7 @@ def voice_preview(request: VoicePreviewRequest):
     # Static mount /files maps to output/, so the relative path under output/
     # becomes the URL path frontend can hit. signed_response wraps for OSS
     # signing when configured, no-op otherwise.
-    url = f"cache/voice_preview/{cache_key}.mp3"
+    url = f"cache/voice_preview/{cache_key}.{audio_ext}"
     return signed_response({"url": url, "cached": cached})
 
 
