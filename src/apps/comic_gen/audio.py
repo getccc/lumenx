@@ -211,7 +211,11 @@ class AudioGenerator:
     ) -> StoryboardFrame:
         """Generate dialogue using real TTS."""
         try:
-            output_path = os.path.join(self.output_dir, 'dialogue', f"{frame.id}.mp3")
+            # DashScope CosyVoice/Qwen3 return mp3; IndexTTS returns wav.
+            # Writing wav bytes into a .mp3 file confuses the ffmpeg mux in
+            # the dub/merge stage, so pick the extension per engine.
+            ext = 'wav' if self.tts_provider == 'indextts' else 'mp3'
+            output_path = os.path.join(self.output_dir, 'dialogue', f"{frame.id}.{ext}")
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
             voice = character.voice_id
