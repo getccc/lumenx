@@ -102,6 +102,7 @@ class ComicGenPipeline:
         self._kling_model = None
         self._vidu_model = None
         self._mulerouter_video_model = None
+        self._comfyui_video_model = None
 
         # Pre-download Demucs model in background so first dub request is fast
         self._demucs_ready = threading.Event()
@@ -352,6 +353,25 @@ class ComicGenPipeline:
             except Exception:
                 logger.warning("mark_video_task_failed: save failed")
             return True
+
+    def _catalog_workflow_for(self, model_name: str) -> Optional[str]:
+        """Look up a ComfyUI workflow template name from the model catalog.
+
+        Catalog entries carry ``runtime.comfyui.workflow``; returning None
+        lets the adapter fall back to its env/default template rather than
+        failing, so a half-declared catalog entry degrades instead of
+        breaking generation.
+        """
+        try:
+            from ...utils.model_catalog import get_catalog_accessor
+
+            accessor = get_catalog_accessor()
+            canonical = accessor.resolve_legacy_to_canonical(model_name) or model_name
+            runtime = accessor.get_mode_runtime(canonical) or {}
+            return (runtime.get("comfyui") or {}).get("workflow")
+        except Exception as e:
+            logger.debug("Could not read comfyui workflow for %s: %s", model_name, e)
+            return None
 
     def _resolve_video_backend(self, model_name: str) -> str:
         try:
@@ -3277,8 +3297,37 @@ class ComicGenPipeline:
             use_mulerouter = backend == "mulerouter" and (
                 model_name_lower.startswith("seedance")
             )
+            # Self-hosted ComfyUI (e.g. MiniMax-H3). Unlike the cloud
+            # providers this one is keyed purely on the resolved backend —
+            # any catalog family declaring `default_backend: comfyui` routes
+            # here, so adding another ComfyUI-hosted model needs no code.
+            use_comfyui = backend == "comfyui"
 
-            if use_mulerouter:
+            if use_comfyui:
+                if self._comfyui_video_model is None:
+                    from ...models.comfyui import ComfyUIVideoModel
+                    self._comfyui_video_model = ComfyUIVideoModel({})
+                workflow = self._catalog_workflow_for(model_name)
+                video_path, _ = self._comfyui_video_model.generate(
+                    prompt=task.prompt,
+                    output_path=output_path,
+                    img_path=img_path,
+                    img_url=img_url,
+                    duration=task.duration,
+                    resolution=task.resolution,
+                    aspect_ratio=task.ratio or "9:16",
+                    seed=task.seed,
+                    generation_mode=task.generation_mode,
+                    ref_image_urls=task.reference_image_urls if task.generation_mode == "r2v" else None,
+                    workflow=workflow,
+                )
+                # H3 generates audio jointly with video and ComfyUI hands the
+                # track back separately. Keep a breadcrumb — the dub stage can
+                # use it instead of demuxing the mp4.
+                extras = getattr(self._comfyui_video_model, "last_extra_outputs", None)
+                if extras:
+                    logger.info(f"[ComfyUI] side outputs for task {task_id}: {extras}")
+            elif use_mulerouter:
                 if self._mulerouter_video_model is None:
                     from ...models.mulerouter import MuleRouterVideoModel
                     self._mulerouter_video_model = MuleRouterVideoModel({})

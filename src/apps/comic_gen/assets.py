@@ -1,7 +1,7 @@
 import os
 import uuid
 import time
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from urllib.parse import quote
 from .models import Character, Scene, Prop, GenerationStatus, ImageAsset, ImageVariant, MAX_VARIANTS_PER_ASSET
 from ...models.image import WanxImageModel, ImageGenModel
@@ -51,7 +51,30 @@ class AssetGenerator:
         self.config = config or {}
         self.model = WanxImageModel(self.config.get('model', {}))
         self._mulerouter_image_model = None
+        # ComfyUI image adapters, cached per workflow template.
+        self._comfyui_image_models: Dict[Optional[str], 'ImageGenModel'] = {}
         self.output_dir = self.config.get('output_dir', 'output/assets')
+
+    def _resolve_backend(self, model_name: str) -> str:
+        """Resolved provider backend for a model, defaulting to dashscope."""
+        if not model_name:
+            return "dashscope"
+        try:
+            from ...utils.provider_registry import resolve_provider_backend
+            return resolve_provider_backend(model_name)
+        except Exception:
+            return "dashscope"
+
+    def _comfyui_workflow_for(self, model_name: str) -> Optional[str]:
+        """Workflow template declared by the catalog entry, if any."""
+        try:
+            from ...utils.model_catalog import get_catalog_accessor
+            accessor = get_catalog_accessor()
+            canonical = accessor.resolve_legacy_to_canonical(model_name) or model_name
+            runtime = accessor.get_mode_runtime(canonical) or {}
+            return (runtime.get("comfyui") or {}).get("workflow")
+        except Exception:
+            return None
 
     def _get_model_for(self, model_name: str) -> "ImageGenModel":
         """Route to the correct image adapter based on model name."""
@@ -60,6 +83,20 @@ class AssetGenerator:
                 from ...models.mulerouter import MuleRouterImageModel
                 self._mulerouter_image_model = MuleRouterImageModel({})
             return self._mulerouter_image_model
+
+        # Self-hosted ComfyUI. Routed on the resolved backend rather than a
+        # name prefix, so any catalog family declaring `default_backend:
+        # comfyui` lands here. Instances are cached per workflow template —
+        # two ComfyUI-hosted image models differ only by that template.
+        if self._resolve_backend(model_name) == "comfyui":
+            workflow = self._comfyui_workflow_for(model_name)
+            if workflow not in self._comfyui_image_models:
+                from ...models.comfyui import ComfyUIImageModel
+                self._comfyui_image_models[workflow] = ComfyUIImageModel(
+                    {"workflow": workflow} if workflow else {}
+                )
+            return self._comfyui_image_models[workflow]
+
         return self.model
 
     def generate_character(self, character: Character, generation_type: str = "all", prompt: str = "", positive_prompt: str = None, negative_prompt: str = "", batch_size: int = 1, model_name: str = None, i2i_model_name: str = None, size: str = None) -> Character:
