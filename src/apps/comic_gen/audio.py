@@ -77,13 +77,26 @@ class AudioGenerator:
     def __init__(self, config: Dict[str, Any] = None):
         self.config = config or {}
         self.output_dir = self.config.get('output_dir', 'output/audio')
-        
-        # Initialize TTS Processor
+
+        # TTS_PROVIDER picks the engine. Both expose the same synthesize()
+        # signature, so nothing downstream of here needs to know which is
+        # active — only get_available_voices() differs, because IndexTTS
+        # has no system voice catalogue (it clones from reference clips).
+        self.tts_provider = (
+            self.config.get('provider')
+            or os.getenv('TTS_PROVIDER', 'dashscope')
+        ).strip().lower()
+
         try:
-            self.tts = TTSProcessor()
-            logger.info("TTS Processor initialized successfully")
+            if self.tts_provider == 'indextts':
+                from ...audio.indextts_tts import IndexTTSEngine
+                self.tts = IndexTTSEngine(self.config.get('indextts') or {})
+                logger.info(f"TTS provider: IndexTTS (self-hosted) at {self.tts.client.host}")
+            else:
+                self.tts = TTSProcessor()
+                logger.info("TTS Processor initialized successfully")
         except Exception as e:
-            logger.warning(f"Failed to initialize TTS Processor: {e}. Using mock mode.")
+            logger.warning(f"Failed to initialize TTS engine ({self.tts_provider}): {e}. Using mock mode.")
             self.tts = None
 
     def get_available_voices(self) -> List[Dict[str, Any]]:
@@ -94,6 +107,28 @@ class AudioGenerator:
         3 tabs (系统音色 / 我的复刻 / 我的设计) with dialect/international
         sub-groupings inside 系统音色.
         """
+        if self.tts and self.tts_provider == 'indextts':
+            # IndexTTS ships no system voices — every voice is a clone of a
+            # reference clip, so the whole list is origin="clone".
+            try:
+                return [
+                    {
+                        "id": voice["id"],
+                        "name": voice["name"],
+                        "gender": "Unknown",
+                        "model": "indextts-2.5",
+                        "family": "indextts",
+                        "supports_instruction": True,
+                        "dialect": None,
+                        "lang_primary": "zh",
+                        "origin": "clone",
+                    }
+                    for voice in self.tts.list_voices()
+                ]
+            except Exception as e:
+                logger.warning(f"Could not list IndexTTS voices: {e}")
+                return []
+
         if self.tts:
             voices_dict = TTSProcessor.list_voices()
             return [
