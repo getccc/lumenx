@@ -2123,6 +2123,25 @@ def refine_storyboard_batch(script_id: str):
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
+@app.get("/projects/{script_id}/storyboard/reference_audit")
+def storyboard_reference_audit(script_id: str):
+    """Pre-flight check for shots that would render without an identity anchor.
+
+    R2V binds reference images positionally, so a frame that talks about a
+    character but binds none still generates — the model invents someone,
+    and the wardrobe/identity jump only surfaces once the shot is rendered.
+    Findings are advisory: a shot may legitimately name an off-screen
+    character.
+    """
+    try:
+        findings = pipeline.audit_storyboard_references(script_id)
+        return {"findings": findings, "count": len(findings)}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/projects/{script_id}/generate_storyboard", response_model=Script)
 def generate_storyboard(script_id: str):
     """Triggers storyboard generation."""

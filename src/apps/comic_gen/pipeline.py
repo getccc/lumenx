@@ -1669,6 +1669,94 @@ class ComicGenPipeline:
             "frame_updated": frame_found
         }
 
+    # ─────────────────────────────────────────────────────────────
+    # Storyboard reference audit
+    # ─────────────────────────────────────────────────────────────
+
+    def _frame_text(self, frame: StoryboardFrame) -> str:
+        """All human-written/LLM-written text on a frame, for name matching."""
+        parts = [
+            frame.visual_description, frame.action_description,
+            frame.character_acting, frame.key_action_physics,
+            frame.dialogue, frame.speaker,
+        ]
+        return " ".join(p for p in parts if p)
+
+    def audit_storyboard_references(self, script_id: str) -> List[Dict[str, Any]]:
+        """Pre-flight check: find frames that will generate without an
+        identity anchor.
+
+        R2V passes the bound assets' images as references and the prompt
+        addresses them positionally (``<Picture N>``). A frame that talks
+        about a character but binds none still generates — the model simply
+        invents someone. That reads as a wardrobe/identity jump mid-episode
+        and is only visible after the shot is rendered, by which point the
+        render has already been paid for.
+
+        Returns findings ordered by frame; empty list means nothing to flag.
+        Advisory only: a shot may legitimately name an off-screen character.
+        """
+        script = self.scripts.get(script_id)
+        if not script:
+            raise ValueError("Script not found")
+
+        resolved = self.resolve_episode_assets(script)
+        characters = resolved.get("characters", script.characters)
+        by_id = {c.id: c for c in characters}
+        named = [(c.name, c) for c in characters if c.name]
+
+        def has_reference(character) -> bool:
+            sheet = getattr(character, "reference_sheet", None)
+            if sheet and getattr(sheet, "image_variants", None):
+                return True
+            return bool(
+                character.image_url or character.three_view_image_url
+                or character.full_body_image_url or character.headshot_image_url
+            )
+
+        findings: List[Dict[str, Any]] = []
+        for index, frame in enumerate(script.frames, start=1):
+            text = self._frame_text(frame)
+
+            # Only flag when the frame binds *nobody*. A frame that binds one
+            # character and names another is almost always describing someone
+            # off-screen ("视线越过前景林默的肩头", "望向画面外的林默") — it has an
+            # anchor and renders fine. Flagging those too produced 5 false
+            # positives against 3 real ones on the first episode, and a check
+            # that cries wolf is a check people stop reading.
+            if not (frame.character_ids or []):
+                mentioned = [c for name, c in named if name in text]
+                if mentioned:
+                    findings.append({
+                        "frame_id": frame.id,
+                        "frame_index": index,
+                        "code": "character_mentioned_but_unbound",
+                        "severity": "warning",
+                        "characters": [c.name for c in mentioned],
+                        "message": (
+                            f"镜{index} 的描述里出现了 {'、'.join(c.name for c in mentioned)}，"
+                            f"但这一帧没有绑定任何角色，生成时拿不到参考图，"
+                            f"模型会自行编造人物形象。"
+                        ),
+                    })
+
+            unreferenced = [by_id[cid].name for cid in (frame.character_ids or [])
+                            if cid in by_id and not has_reference(by_id[cid])]
+            if unreferenced:
+                findings.append({
+                    "frame_id": frame.id,
+                    "frame_index": index,
+                    "code": "bound_character_without_image",
+                    "severity": "warning",
+                    "characters": unreferenced,
+                    "message": (
+                        f"镜{index} 绑定了 {'、'.join(unreferenced)}，"
+                        f"但该角色还没有生成参考图，等于没有身份锚点。"
+                    ),
+                })
+
+        return findings
+
     def generate_storyboard(self, script_id: str) -> Script:
         """Step 3: Generate storyboard images (Initial/Batch)."""
         script = self.scripts.get(script_id)
@@ -2190,6 +2278,19 @@ class ComicGenPipeline:
             if frame:
                 from .prompt_assembly import enrich_prompt_with_dialogue
                 prompt = enrich_prompt_with_dialogue(prompt, frame)
+
+        # Warn when this shot is about to render a character with no
+        # reference to anchor it. Advisory, not a block — a shot may
+        # legitimately name someone off-screen — but without it the model
+        # silently invents a look and the mismatch only shows up after the
+        # render is paid for.
+        if frame_id:
+            try:
+                for finding in self.audit_storyboard_references(script_id):
+                    if finding["frame_id"] == frame_id:
+                        logger.warning("[REF-AUDIT] %s", finding["message"])
+            except Exception as exc:  # never block generation on the audit
+                logger.debug("Reference audit skipped: %s", exc)
 
         task = VideoTask(
             id=task_id,
