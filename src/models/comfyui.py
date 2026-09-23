@@ -225,13 +225,34 @@ class ComfyUIClient:
 
     def wait(self, prompt_id: str, timeout: Optional[int] = None,
              poll_interval: int = POLL_INTERVAL) -> Tuple[Dict[str, Any], float]:
+        """Poll until the job finishes, tolerating transient poll failures.
+
+        A single failed poll must not abort the job. Video sampling keeps the
+        host busy for minutes at a time and these requests often cross a VPN
+        or LAN, so an occasional read timeout is expected — dropping the job
+        over one would throw away work that is still running server-side.
+        Only a real execution failure, or the overall deadline, ends the wait.
+        """
         deadline = time.time() + (timeout or self.timeout)
         started = time.time()
+        consecutive_errors = 0
         while time.time() < deadline:
-            r = self.session.get(self._url(f"/history/{prompt_id}"),
-                                 headers=self.headers, timeout=60)
-            r.raise_for_status()
-            history = r.json()
+            try:
+                r = self.session.get(self._url(f"/history/{prompt_id}"),
+                                     headers=self.headers, timeout=60)
+                r.raise_for_status()
+                history = r.json()
+                consecutive_errors = 0
+            except Exception as exc:
+                consecutive_errors += 1
+                # Noisy at first, then quiet — a long outage should leave a
+                # trail without flooding the log for the whole deadline.
+                if consecutive_errors <= 3 or consecutive_errors % 20 == 0:
+                    logger.warning("[ComfyUI] poll %s failed (%d in a row): %s",
+                                   prompt_id, consecutive_errors, exc)
+                time.sleep(poll_interval)
+                continue
+
             if history:
                 record = history[prompt_id]
                 status = record.get("status", {})
@@ -258,15 +279,26 @@ class ComfyUIClient:
                         found.append(item)
         return found
 
-    def download(self, item: Dict[str, Any], dest_path: str) -> str:
+    def download(self, item: Dict[str, Any], dest_path: str, attempts: int = 3) -> str:
         params = {
             "filename": item["filename"],
             "subfolder": item.get("subfolder", ""),
             "type": item.get("type", "output"),
         }
-        r = self.session.get(self._url("/view"), params=params,
-                             headers=self.headers, timeout=600)
-        r.raise_for_status()
+        # The artifact already exists server-side; a dropped transfer is worth
+        # retrying rather than discarding a completed generation.
+        for attempt in range(1, attempts + 1):
+            try:
+                r = self.session.get(self._url("/view"), params=params,
+                                     headers=self.headers, timeout=600)
+                r.raise_for_status()
+                break
+            except Exception as exc:
+                if attempt == attempts:
+                    raise
+                logger.warning("[ComfyUI] download %s failed (attempt %d/%d): %s",
+                               item["filename"], attempt, attempts, exc)
+                time.sleep(5 * attempt)
         os.makedirs(os.path.dirname(os.path.abspath(dest_path)), exist_ok=True)
         with open(dest_path, "wb") as fh:
             fh.write(r.content)
