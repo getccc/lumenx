@@ -102,6 +102,7 @@ class ComicGenPipeline:
         self._kling_model = None
         self._vidu_model = None
         self._mulerouter_video_model = None
+        self._comfyui_video_model = None
 
         # Pre-download Demucs model in background so first dub request is fast
         self._demucs_ready = threading.Event()
@@ -352,6 +353,25 @@ class ComicGenPipeline:
             except Exception:
                 logger.warning("mark_video_task_failed: save failed")
             return True
+
+    def _catalog_workflow_for(self, model_name: str) -> Optional[str]:
+        """Look up a ComfyUI workflow template name from the model catalog.
+
+        Catalog entries carry ``runtime.comfyui.workflow``; returning None
+        lets the adapter fall back to its env/default template rather than
+        failing, so a half-declared catalog entry degrades instead of
+        breaking generation.
+        """
+        try:
+            from ...utils.model_catalog import get_catalog_accessor
+
+            accessor = get_catalog_accessor()
+            canonical = accessor.resolve_legacy_to_canonical(model_name) or model_name
+            runtime = accessor.get_mode_runtime(canonical) or {}
+            return (runtime.get("comfyui") or {}).get("workflow")
+        except Exception as e:
+            logger.debug("Could not read comfyui workflow for %s: %s", model_name, e)
+            return None
 
     def _resolve_video_backend(self, model_name: str) -> str:
         try:
@@ -1649,6 +1669,94 @@ class ComicGenPipeline:
             "frame_updated": frame_found
         }
 
+    # ─────────────────────────────────────────────────────────────
+    # Storyboard reference audit
+    # ─────────────────────────────────────────────────────────────
+
+    def _frame_text(self, frame: StoryboardFrame) -> str:
+        """All human-written/LLM-written text on a frame, for name matching."""
+        parts = [
+            frame.visual_description, frame.action_description,
+            frame.character_acting, frame.key_action_physics,
+            frame.dialogue, frame.speaker,
+        ]
+        return " ".join(p for p in parts if p)
+
+    def audit_storyboard_references(self, script_id: str) -> List[Dict[str, Any]]:
+        """Pre-flight check: find frames that will generate without an
+        identity anchor.
+
+        R2V passes the bound assets' images as references and the prompt
+        addresses them positionally (``<Picture N>``). A frame that talks
+        about a character but binds none still generates — the model simply
+        invents someone. That reads as a wardrobe/identity jump mid-episode
+        and is only visible after the shot is rendered, by which point the
+        render has already been paid for.
+
+        Returns findings ordered by frame; empty list means nothing to flag.
+        Advisory only: a shot may legitimately name an off-screen character.
+        """
+        script = self.scripts.get(script_id)
+        if not script:
+            raise ValueError("Script not found")
+
+        resolved = self.resolve_episode_assets(script)
+        characters = resolved.get("characters", script.characters)
+        by_id = {c.id: c for c in characters}
+        named = [(c.name, c) for c in characters if c.name]
+
+        def has_reference(character) -> bool:
+            sheet = getattr(character, "reference_sheet", None)
+            if sheet and getattr(sheet, "image_variants", None):
+                return True
+            return bool(
+                character.image_url or character.three_view_image_url
+                or character.full_body_image_url or character.headshot_image_url
+            )
+
+        findings: List[Dict[str, Any]] = []
+        for index, frame in enumerate(script.frames, start=1):
+            text = self._frame_text(frame)
+
+            # Only flag when the frame binds *nobody*. A frame that binds one
+            # character and names another is almost always describing someone
+            # off-screen ("视线越过前景林默的肩头", "望向画面外的林默") — it has an
+            # anchor and renders fine. Flagging those too produced 5 false
+            # positives against 3 real ones on the first episode, and a check
+            # that cries wolf is a check people stop reading.
+            if not (frame.character_ids or []):
+                mentioned = [c for name, c in named if name in text]
+                if mentioned:
+                    findings.append({
+                        "frame_id": frame.id,
+                        "frame_index": index,
+                        "code": "character_mentioned_but_unbound",
+                        "severity": "warning",
+                        "characters": [c.name for c in mentioned],
+                        "message": (
+                            f"镜{index} 的描述里出现了 {'、'.join(c.name for c in mentioned)}，"
+                            f"但这一帧没有绑定任何角色，生成时拿不到参考图，"
+                            f"模型会自行编造人物形象。"
+                        ),
+                    })
+
+            unreferenced = [by_id[cid].name for cid in (frame.character_ids or [])
+                            if cid in by_id and not has_reference(by_id[cid])]
+            if unreferenced:
+                findings.append({
+                    "frame_id": frame.id,
+                    "frame_index": index,
+                    "code": "bound_character_without_image",
+                    "severity": "warning",
+                    "characters": unreferenced,
+                    "message": (
+                        f"镜{index} 绑定了 {'、'.join(unreferenced)}，"
+                        f"但该角色还没有生成参考图，等于没有身份锚点。"
+                    ),
+                })
+
+        return findings
+
     def generate_storyboard(self, script_id: str) -> Script:
         """Step 3: Generate storyboard images (Initial/Batch)."""
         script = self.scripts.get(script_id)
@@ -2170,6 +2278,19 @@ class ComicGenPipeline:
             if frame:
                 from .prompt_assembly import enrich_prompt_with_dialogue
                 prompt = enrich_prompt_with_dialogue(prompt, frame)
+
+        # Warn when this shot is about to render a character with no
+        # reference to anchor it. Advisory, not a block — a shot may
+        # legitimately name someone off-screen — but without it the model
+        # silently invents a look and the mismatch only shows up after the
+        # render is paid for.
+        if frame_id:
+            try:
+                for finding in self.audit_storyboard_references(script_id):
+                    if finding["frame_id"] == frame_id:
+                        logger.warning("[REF-AUDIT] %s", finding["message"])
+            except Exception as exc:  # never block generation on the audit
+                logger.debug("Reference audit skipped: %s", exc)
 
         task = VideoTask(
             id=task_id,
@@ -3277,8 +3398,37 @@ class ComicGenPipeline:
             use_mulerouter = backend == "mulerouter" and (
                 model_name_lower.startswith("seedance")
             )
+            # Self-hosted ComfyUI (e.g. MiniMax-H3). Unlike the cloud
+            # providers this one is keyed purely on the resolved backend —
+            # any catalog family declaring `default_backend: comfyui` routes
+            # here, so adding another ComfyUI-hosted model needs no code.
+            use_comfyui = backend == "comfyui"
 
-            if use_mulerouter:
+            if use_comfyui:
+                if self._comfyui_video_model is None:
+                    from ...models.comfyui import ComfyUIVideoModel
+                    self._comfyui_video_model = ComfyUIVideoModel({})
+                workflow = self._catalog_workflow_for(model_name)
+                video_path, _ = self._comfyui_video_model.generate(
+                    prompt=task.prompt,
+                    output_path=output_path,
+                    img_path=img_path,
+                    img_url=img_url,
+                    duration=task.duration,
+                    resolution=task.resolution,
+                    aspect_ratio=task.ratio or "9:16",
+                    seed=task.seed,
+                    generation_mode=task.generation_mode,
+                    ref_image_urls=task.reference_image_urls if task.generation_mode == "r2v" else None,
+                    workflow=workflow,
+                )
+                # H3 generates audio jointly with video and ComfyUI hands the
+                # track back separately. Keep a breadcrumb — the dub stage can
+                # use it instead of demuxing the mp4.
+                extras = getattr(self._comfyui_video_model, "last_extra_outputs", None)
+                if extras:
+                    logger.info(f"[ComfyUI] side outputs for task {task_id}: {extras}")
+            elif use_mulerouter:
                 if self._mulerouter_video_model is None:
                     from ...models.mulerouter import MuleRouterVideoModel
                     self._mulerouter_video_model = MuleRouterVideoModel({})
@@ -3584,14 +3734,33 @@ class ComicGenPipeline:
     def get_script(self, script_id: str) -> Optional[Script]:
         return self.scripts.get(script_id)
 
+    @staticmethod
+    def _image_variant_fields(image_asset: Any) -> Tuple[Optional[list], Optional[str]]:
+        """Resolve the variant list + selected-id attribute name for a container.
+
+        Two shapes carry image variants: ``ImageAsset`` (variants /
+        selected_id) and ``AssetUnit`` (image_variants / selected_image_id).
+        Characters in the unified R2V flow use AssetUnit via
+        ``reference_sheet``, so helpers that assume only ImageAsset raise
+        AttributeError on the very asset the workflow revolves around.
+        """
+        if image_asset is None:
+            return None, None
+        if hasattr(image_asset, "variants"):
+            return image_asset.variants, "selected_id"
+        if hasattr(image_asset, "image_variants"):
+            return image_asset.image_variants, "selected_image_id"
+        return None, None
+
     def _select_variant_in_asset(self, image_asset: Any, variant_id: str) -> Any:
-        """Helper to select a variant in an ImageAsset. Returns the selected variant if found."""
-        if not image_asset or not image_asset.variants:
+        """Helper to select a variant in an ImageAsset/AssetUnit. Returns the selected variant if found."""
+        variants, selected_attr = self._image_variant_fields(image_asset)
+        if not variants:
             return None
-            
-        for variant in image_asset.variants:
+
+        for variant in variants:
             if variant.id == variant_id:
-                image_asset.selected_id = variant_id
+                setattr(image_asset, selected_attr, variant_id)
                 return variant
         return None
 
@@ -3817,9 +3986,10 @@ class ComicGenPipeline:
 
     def _set_variant_favorite(self, image_asset: Any, variant_id: str, is_favorited: bool) -> bool:
         """Helper to set favorite status of a variant. Returns True if found."""
-        if not image_asset or not image_asset.variants:
+        variants, _ = self._image_variant_fields(image_asset)
+        if not variants:
             return False
-        for v in image_asset.variants:
+        for v in variants:
             if v.id == variant_id:
                 v.is_favorited = is_favorited
                 return True
@@ -4295,6 +4465,12 @@ class ComicGenPipeline:
             if not series:
                 raise ValueError(f"Series not found: {series_id}")
 
+            # Self-hosted TTS clones locally instead of minting a cloud
+            # voice_id. Same user-facing flow (upload a clip, get a voice in
+            # the 我的复刻 tab), different mechanics.
+            if getattr(self.audio_generator, "tts_provider", "") == "indextts":
+                return self._create_voice_clone_indextts(series, audio_url, label)
+
             api_key = os.getenv("DASHSCOPE_API_KEY")
             if not api_key:
                 raise RuntimeError("DASHSCOPE_API_KEY not configured")
@@ -4345,6 +4521,53 @@ class ComicGenPipeline:
             self._save_series_data_unlocked()
             logger.info(f"[voice/clone] success voice_id={voice_id} stored on series={series_id}")
             return custom
+
+    def _create_voice_clone_indextts(
+        self, series: 'Series', audio_url: str, label: str
+    ) -> 'CustomVoice':
+        """Register a reference clip with the self-hosted IndexTTS engine.
+
+        Must be called with ``self._save_lock`` held (create_voice_clone does).
+
+        IndexTTS clones a voice from an audio clip rather than minting a
+        server-side id, and its presets cannot be read back over the API, so
+        LumenX keeps the clip itself as the source of truth — the returned
+        CustomVoice id is the local voice id the engine resolves against.
+        """
+        import re
+        from .models import CustomVoice
+
+        engine = self.audio_generator.tts
+        if engine is None:
+            raise RuntimeError("IndexTTS engine is not available; check INDEXTTS_HOST")
+
+        local_path = self._resolve_media_path(audio_url)
+        if not local_path or not os.path.exists(local_path):
+            raise RuntimeError(f"Reference audio not found locally: {audio_url}")
+
+        # The id doubles as a filename under voice_dir and as the preset name,
+        # so strip anything that is not safe in a path. CJK is kept — IndexTTS
+        # accepts it and creators name voices in their own language.
+        slug = re.sub(r"[^\w一-鿿-]+", "_", label).strip("_") or "voice"
+        voice_id = f"{slug}_{uuid.uuid4().hex[:6]}"
+
+        engine.clone_voice(voice_id, local_path)
+
+        custom = CustomVoice(
+            id=voice_id,
+            label=label,
+            origin="clone",
+            target_model="indextts-2.5",
+            family="indextts",
+            source_audio_url=audio_url,
+        )
+        if series.custom_voices is None:
+            series.custom_voices = []
+        series.custom_voices.append(custom)
+        series.updated_at = time.time()
+        self._save_series_data_unlocked()
+        logger.info(f"[voice/clone] IndexTTS voice {voice_id!r} stored on series={series.id}")
+        return custom
 
     def list_custom_voices(self, series_id: str) -> List['CustomVoice']:
         """Return all custom voices in a series (clones + designs).
@@ -4405,6 +4628,15 @@ class ComicGenPipeline:
         """
         import requests
         import hashlib
+
+        # IndexTTS clones a voice from a reference clip; it cannot mint one
+        # from a text description. Say so plainly instead of failing later
+        # on a missing DashScope key, which reads as a misconfiguration.
+        if getattr(self.audio_generator, "tts_provider", "") == "indextts":
+            raise RuntimeError(
+                "当前 TTS 引擎是 IndexTTS，它只能用参考音频复刻音色，不支持用文字描述生成音色。"
+                "请改用「声音复刻」上传一段参考音频，或把 TTS_PROVIDER 切回 dashscope。"
+            )
 
         api_key = os.getenv("DASHSCOPE_API_KEY")
         if not api_key:

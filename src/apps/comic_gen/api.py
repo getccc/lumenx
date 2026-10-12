@@ -2123,6 +2123,25 @@ def refine_storyboard_batch(script_id: str):
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
+@app.get("/projects/{script_id}/storyboard/reference_audit")
+def storyboard_reference_audit(script_id: str):
+    """Pre-flight check for shots that would render without an identity anchor.
+
+    R2V binds reference images positionally, so a frame that talks about a
+    character but binds none still generates — the model invents someone,
+    and the wardrobe/identity jump only surfaces once the shot is rendered.
+    Findings are advisory: a shot may legitimately name an off-screen
+    character.
+    """
+    try:
+        findings = pipeline.audit_storyboard_references(script_id)
+        return {"findings": findings, "count": len(findings)}
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/projects/{script_id}/generate_storyboard", response_model=Script)
 def generate_storyboard(script_id: str):
     """Triggers storyboard generation."""
@@ -2778,7 +2797,7 @@ def voice_preview(request: VoicePreviewRequest):
 
     Cache key = md5(voice_id|text|speed|pitch|volume|instructions). First
     call triggers TTSProcessor.synthesize() and writes to
-    output/cache/voice_preview/{key}.mp3. Subsequent identical calls
+    output/cache/voice_preview/{key}.{mp3|wav}. Subsequent identical calls
     return the cached URL instantly.
 
     PR-3h #2: handles CUSTOM voices (clones/designs) by looking up
@@ -2804,7 +2823,11 @@ def voice_preview(request: VoicePreviewRequest):
     cache_key = hashlib.md5(
         f"{request.voice_id}|{request.text}|{request.speed}|{request.pitch}|{request.volume}|{request.instructions or ''}".encode("utf-8")
     ).hexdigest()
-    cache_path = os.path.join(cache_dir, f"{cache_key}.mp3")
+    # DashScope CosyVoice/Qwen3 return mp3; IndexTTS returns wav. Keep the
+    # cached file's extension honest so the <audio> element and any later
+    # ffmpeg step see the format they actually get.
+    audio_ext = "wav" if getattr(pipeline.audio_generator, "tts_provider", "") == "indextts" else "mp3"
+    cache_path = os.path.join(cache_dir, f"{cache_key}.{audio_ext}")
     cached = os.path.exists(cache_path)
 
     if not cached:
@@ -2827,7 +2850,7 @@ def voice_preview(request: VoicePreviewRequest):
     # Static mount /files maps to output/, so the relative path under output/
     # becomes the URL path frontend can hit. signed_response wraps for OSS
     # signing when configured, no-op otherwise.
-    url = f"cache/voice_preview/{cache_key}.mp3"
+    url = f"cache/voice_preview/{cache_key}.{audio_ext}"
     return signed_response({"url": url, "cached": cached})
 
 
@@ -3926,7 +3949,26 @@ def get_env_config():
             for field in SECRET_FIELDS
         }
 
+        # Whether a generation provider *other than DashScope* is usable.
+        # Drives the frontend's required-field gate: a fully self-hosted
+        # deployment (ComfyUI + IndexTTS) has no DashScope key and must not
+        # be blocked behind a dialog asking for one.
+        comfyui_image_host = (os.getenv("COMFYUI_IMAGE_HOST", "") or "").strip()
+        comfyui_video_host = (os.getenv("COMFYUI_VIDEO_HOST", "") or "").strip()
+        alternative_provider_configured = bool(
+            comfyui_image_host
+            or comfyui_video_host
+            or secrets_configured.get("MULEROUTER_API_KEY")
+            or _check_mulerun_cli_status()
+        )
+
         return {
+            # Self-hosted provider endpoints (not secrets — plain host:port).
+            "COMFYUI_IMAGE_HOST": comfyui_image_host,
+            "COMFYUI_VIDEO_HOST": comfyui_video_host,
+            "INDEXTTS_HOST": (os.getenv("INDEXTTS_HOST", "") or "").strip(),
+            "TTS_PROVIDER": (os.getenv("TTS_PROVIDER", "dashscope") or "dashscope").strip().lower(),
+            "alternative_provider_configured": alternative_provider_configured,
             # Masked secrets — never plaintext.
             "DASHSCOPE_API_KEY": _mask_secret(os.getenv("DASHSCOPE_API_KEY")),
             "ALIBABA_CLOUD_ACCESS_KEY_ID": _mask_secret(os.getenv("ALIBABA_CLOUD_ACCESS_KEY_ID")),

@@ -52,6 +52,8 @@ describe('model catalog selectors', () => {
         expect(GLOBAL_I2I_MODELS.map((model) => model.id)).toEqual(GLOBAL_IMAGE_MODELS.map((m) => m.id));
 
         // Ordered DESC by ui.order; ties broken by display_name asc.
+        // Self-hosted entries carry a deliberately low ui.order so they are
+        // discoverable without displacing the maintained cloud defaults.
         expect(GLOBAL_I2V_MODELS.map((model) => model.id)).toEqual([
             'happyhorse-1.1-i2v',
             'kling-v3-i2v',
@@ -61,6 +63,7 @@ describe('model catalog selectors', () => {
             'wan2.7-i2v',
             'viduq3-pro-i2v',
             'viduq3-turbo-i2v',
+            'comfyui-minimax-h3-i2v',
         ]);
     });
 

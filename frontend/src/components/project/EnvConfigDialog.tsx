@@ -65,10 +65,12 @@ const normalizeEnvConfig = (existing: EnvConfig, data?: EnvConfigPayload): EnvCo
   endpoint_overrides: data?.endpoint_overrides ?? existing.endpoint_overrides ?? {},
 });
 
-const getValidationErrors = (env: EnvConfig): string[] => {
+const getValidationErrors = (env: EnvConfig, alternativeProvider = false): string[] => {
   const errors: string[] = [];
 
-  if (!env.DASHSCOPE_API_KEY?.trim()) {
+  // DashScope is only mandatory when nothing else can generate. A fully
+  // self-hosted stack (ComfyUI + IndexTTS) is a valid configuration.
+  if (!alternativeProvider && !env.DASHSCOPE_API_KEY?.trim()) {
     errors.push("DashScope API Key");
   }
   if (env.KLING_PROVIDER_MODE === "vendor") {
@@ -92,6 +94,8 @@ export default function EnvConfigDialog({ isOpen, onClose, isRequired = false }:
   const [saving, setSaving] = useState(false);
   const [endpointsOpen, setEndpointsOpen] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // 后端报告是否存在 DashScope 以外的可用生成后端（自托管 ComfyUI 等）。
+  const [alternativeProvider, setAlternativeProvider] = useState(false);
   const t = useTranslations("project");
   const tc = useTranslations("common");
 
@@ -106,6 +110,7 @@ export default function EnvConfigDialog({ isOpen, onClose, isRequired = false }:
     setLoadError(null);
     try {
       const data = await api.getEnvConfig();
+      setAlternativeProvider(data.alternative_provider_configured === true);
       setConfig((prev) => normalizeEnvConfig(prev, data));
     } catch (error) {
       console.error("Failed to load env config:", error);
@@ -115,11 +120,11 @@ export default function EnvConfigDialog({ isOpen, onClose, isRequired = false }:
     }
   };
 
-  const validateRequiredFields = () => getValidationErrors(config).length === 0;
+  const validateRequiredFields = () => getValidationErrors(config, alternativeProvider).length === 0;
   const canClose = !isRequired || validateRequiredFields();
 
   const handleSave = async () => {
-    const errors = getValidationErrors(config);
+    const errors = getValidationErrors(config, alternativeProvider);
     if (errors.length > 0) {
       alert(t("requiredFields") + "\n- " + errors.join("\n- "));
       return;
@@ -224,16 +229,34 @@ export default function EnvConfigDialog({ isOpen, onClose, isRequired = false }:
               <>
                 <div>
                   <label className="flex items-center justify-between text-sm font-medium text-foreground mb-2">
-                    <span>DashScope API Key <span className="text-red-500">*</span></span>
+                    <span>
+                      DashScope API Key
+                      {!alternativeProvider && <span className="text-red-500"> *</span>}
+                    </span>
                     <span className="text-text-muted font-normal text-xs">e.g. sk-xxx</span>
                   </label>
                   <input
                     type="password"
                     value={config.DASHSCOPE_API_KEY}
                     onChange={(e) => handleChange("DASHSCOPE_API_KEY", e.target.value)}
-                    placeholder="Required for DashScope-first model routing"
+                    placeholder={
+                      alternativeProvider
+                        ? "Optional — a self-hosted provider is already configured"
+                        : "Required for DashScope-first model routing"
+                    }
                     className={inputClass}
                   />
+                  {alternativeProvider && (
+                    <p className="mt-2 text-xs text-text-secondary">
+                      {[
+                        config.COMFYUI_IMAGE_HOST && `image → ${config.COMFYUI_IMAGE_HOST}`,
+                        config.COMFYUI_VIDEO_HOST && `video → ${config.COMFYUI_VIDEO_HOST}`,
+                        config.INDEXTTS_HOST && `tts → ${config.INDEXTTS_HOST}`,
+                      ]
+                        .filter(Boolean)
+                        .join("   ·   ")}
+                    </p>
+                  )}
                 </div>
 
                 <div className="bg-glass border border-glass-border rounded-lg p-4 space-y-4">

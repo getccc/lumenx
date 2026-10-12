@@ -1,0 +1,65 @@
+family: comfyui-qwen-image
+display_name: "Qwen Image (ComfyUI 自托管)"
+provider: comfyui
+routing_prefixes:
+  - comfyui-qwen-image
+supported_backends:
+  - comfyui
+default_backend: comfyui
+credential_sources:
+  # 自托管没有 API key，能不能用取决于实例地址是否配置。
+  comfyui:
+    - COMFYUI_IMAGE_HOST
+supported_modalities:
+  - t2i
+  - i2i
+  - image
+transport:
+  image_input_mode:
+    comfyui: comfyui_upload_image
+  audio_input_mode:
+    comfyui: comfyui_upload_file
+  reference_video_input_mode:
+    comfyui: comfyui_upload_file
+docs:
+  official_snapshot_ids:
+    - comfyui/qwen-image-2.1/2026-09-22
+models:
+  - id: comfyui-qwen-image-2.1
+    display_name: Qwen Image 2.1 (本地)
+    description: 自托管 ComfyUI 上的 Qwen-Image 2.1，支持文生图与最多 16 张参考图的图生图
+    status: active
+    release_stage: stable
+    capabilities: [t2i, i2i]
+    docs:
+      context_hub_doc_ids:
+        - comfyui/qwen-image-2.1
+    runtime:
+      comfyui:
+        gateway: comfyui
+        # config/comfyui_workflows/ 下的模板名
+        workflow: qwen_image_2.1
+    ui:
+      selection_group: image
+      visible_in: [project_settings, series_settings, global_settings]
+      order: 50
+      badges: [new]
+    params:
+      size:
+        options:
+          - "1024*1024"
+          - "768*1152"
+          - "832*1216"
+          - "1152*768"
+          - "1536*864"
+          - "1328*1328"
+          - "2048*2048"
+        default: "1024*1024"
+      negativePrompt: true
+      seed: true
+      # 由本地采样器决定，不走云端的提示词扩写/水印
+      promptExtend: false
+      watermark: false
+    inputs:
+      reference_images:
+        max: 16

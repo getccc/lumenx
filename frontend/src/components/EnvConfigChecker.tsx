@@ -22,8 +22,14 @@ export default function EnvConfigChecker() {
       const config = await api.getEnvConfig();
       // 空值和空字符串都视为未配置
       const dashscopeKey = config.DASHSCOPE_API_KEY?.trim();
-      const hasRequired = dashscopeKey && dashscopeKey.length > 0;
-      
+      const hasDashscope = Boolean(dashscopeKey && dashscopeKey.length > 0);
+      // 全自托管部署（ComfyUI + IndexTTS）没有 DashScope key，不该被这个
+      // 对话框挡住。后端用 alternative_provider_configured 报告是否存在
+      // 其它可用的生成后端；字段缺失时退回旧的「必须有 DashScope」判断，
+      // 兼容老后端。
+      const hasAlternative = config.alternative_provider_configured === true;
+      const hasRequired = hasDashscope || hasAlternative;
+
       if (!hasRequired) {
         setEnvRequired(true);
         setIsEnvDialogOpen(true);

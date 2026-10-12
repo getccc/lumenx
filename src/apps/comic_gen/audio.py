@@ -77,13 +77,26 @@ class AudioGenerator:
     def __init__(self, config: Dict[str, Any] = None):
         self.config = config or {}
         self.output_dir = self.config.get('output_dir', 'output/audio')
-        
-        # Initialize TTS Processor
+
+        # TTS_PROVIDER picks the engine. Both expose the same synthesize()
+        # signature, so nothing downstream of here needs to know which is
+        # active — only get_available_voices() differs, because IndexTTS
+        # has no system voice catalogue (it clones from reference clips).
+        self.tts_provider = (
+            self.config.get('provider')
+            or os.getenv('TTS_PROVIDER', 'dashscope')
+        ).strip().lower()
+
         try:
-            self.tts = TTSProcessor()
-            logger.info("TTS Processor initialized successfully")
+            if self.tts_provider == 'indextts':
+                from ...audio.indextts_tts import IndexTTSEngine
+                self.tts = IndexTTSEngine(self.config.get('indextts') or {})
+                logger.info(f"TTS provider: IndexTTS (self-hosted) at {self.tts.client.host}")
+            else:
+                self.tts = TTSProcessor()
+                logger.info("TTS Processor initialized successfully")
         except Exception as e:
-            logger.warning(f"Failed to initialize TTS Processor: {e}. Using mock mode.")
+            logger.warning(f"Failed to initialize TTS engine ({self.tts_provider}): {e}. Using mock mode.")
             self.tts = None
 
     def get_available_voices(self) -> List[Dict[str, Any]]:
@@ -94,6 +107,16 @@ class AudioGenerator:
         3 tabs (系统音色 / 我的复刻 / 我的设计) with dialect/international
         sub-groupings inside 系统音色.
         """
+        if self.tts_provider == 'indextts':
+            # IndexTTS has no system voice catalogue: every voice is cloned
+            # from a reference clip. Those live on Series.custom_voices[] and
+            # reach the picker through /series/{id}/custom_voices, not here.
+            #
+            # Presets that exist only on the IndexTTS server are deliberately
+            # not surfaced — LumenX keeps the reference clip itself, and a
+            # voice with no local clip would fail at synthesis time.
+            return []
+
         if self.tts:
             voices_dict = TTSProcessor.list_voices()
             return [
@@ -176,7 +199,11 @@ class AudioGenerator:
     ) -> StoryboardFrame:
         """Generate dialogue using real TTS."""
         try:
-            output_path = os.path.join(self.output_dir, 'dialogue', f"{frame.id}.mp3")
+            # DashScope CosyVoice/Qwen3 return mp3; IndexTTS returns wav.
+            # Writing wav bytes into a .mp3 file confuses the ffmpeg mux in
+            # the dub/merge stage, so pick the extension per engine.
+            ext = 'wav' if self.tts_provider == 'indextts' else 'mp3'
+            output_path = os.path.join(self.output_dir, 'dialogue', f"{frame.id}.{ext}")
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
             voice = character.voice_id

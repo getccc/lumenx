@@ -94,6 +94,15 @@ export interface EnvConfigPayload {
     KLING_SECRET_KEY?: string;
     VIDU_API_KEY?: string;
     endpoint_overrides?: Record<string, string>;
+    // Self-hosted provider endpoints (plain host:port, not secrets).
+    COMFYUI_IMAGE_HOST?: string;
+    COMFYUI_VIDEO_HOST?: string;
+    INDEXTTS_HOST?: string;
+    TTS_PROVIDER?: string;
+    // True when a generation provider other than DashScope is usable
+    // (self-hosted ComfyUI, MuleRouter key, or MuleRun CLI login). A fully
+    // self-hosted deployment has no DashScope key and must not be gated on one.
+    alternative_provider_configured?: boolean;
     // Secrets from GET are masked (bullets + last 4 chars). This map reports
     // which credential fields are actually configured on the backend.
     secrets_configured?: Record<string, boolean>;

@@ -1,5 +1,6 @@
 from typing import List, Optional, Dict, Any
 from enum import Enum
+import os
 import time
 from pydantic import BaseModel, Field
 
@@ -7,6 +8,16 @@ from ...utils.model_catalog import get_default_model_settings
 
 
 _DEFAULT_MODEL_SETTINGS = get_default_model_settings()
+
+# ModelSettings.r2v_model has historically defaulted to wan2.7-r2v rather
+# than the catalog's r2v default, and existing projects rely on that. Keep
+# it, but let a deployment override it via DEFAULT_R2V_MODEL like the other
+# defaults (get_default_model_settings already validated that value).
+_DEFAULT_R2V_MODEL = (
+    _DEFAULT_MODEL_SETTINGS.r2v_model
+    if (os.getenv("DEFAULT_R2V_MODEL") or "").strip()
+    else "wan2.7-r2v"
+)
 
 class AspectRatio(str, Enum):
     SQUARE = "1:1"
@@ -489,7 +500,7 @@ class ModelSettings(BaseModel):
     image_model: str = Field(_DEFAULT_MODEL_SETTINGS.image_model, description="Image generation model (T2I+I2I unified)")
     i2v_model: str = Field(_DEFAULT_MODEL_SETTINGS.i2v_model, description="Image-to-Video model for Motion")
     r2v_model: str = Field(
-        "wan2.7-r2v",
+        _DEFAULT_R2V_MODEL,
         description="Reference-to-Video default for the project. Used by Storyboard's R2V tab as the initial picker value; per-storyboard override still wins.",
     )
     character_aspect_ratio: str = Field("9:16", description="Aspect ratio for Characters (9:16, 16:9, 1:1)")

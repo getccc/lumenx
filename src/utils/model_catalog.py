@@ -1,12 +1,29 @@
 import json
+import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import yaml
 
+logger = logging.getLogger(__name__)
 
-SUPPORTED_PROVIDER_BACKENDS = ("dashscope", "vendor", "mulerouter")
+# Deployment-level overrides for the catalog's default model picks. A
+# self-hosted install wants new projects to start on its own models without
+# editing catalog.meta.yaml, which is shared configuration. One image var
+# covers t2i/i2i/image because those surfaces are unified at the consumer
+# layer.
+DEFAULT_MODEL_ENV_OVERRIDES = {
+    "t2i_model": "DEFAULT_IMAGE_MODEL",
+    "i2i_model": "DEFAULT_IMAGE_MODEL",
+    "image_model": "DEFAULT_IMAGE_MODEL",
+    "i2v_model": "DEFAULT_I2V_MODEL",
+    "r2v_model": "DEFAULT_R2V_MODEL",
+}
+
+
+SUPPORTED_PROVIDER_BACKENDS = ("dashscope", "vendor", "mulerouter", "comfyui")
 SUPPORTED_MODEL_STATUSES = ("active", "planned", "deprecated", "hidden")
 SUPPORTED_SELECTION_GROUPS = ("t2i", "i2i", "image", "i2v", "r2v", "t2v")
 VISIBLE_MODEL_SURFACES = ("project_settings", "series_settings", "video_sidebar", "global_settings")
@@ -1066,9 +1083,40 @@ def get_catalog_accessor(
     return CatalogAccessor(active_catalog)
 
 
+def apply_default_model_overrides(
+    defaults: Mapping[str, str],
+    known_model_ids: Iterable[str],
+    env: Optional[Mapping[str, str]] = None,
+) -> Dict[str, str]:
+    """Overlay DEFAULT_*_MODEL env vars onto the catalog's default picks.
+
+    An unknown id is ignored with a warning rather than accepted: a typo in
+    a deployment env var should not silently leave every new project
+    pointing at a model that cannot generate.
+    """
+    environment = env if env is not None else os.environ
+    known = set(known_model_ids)
+    resolved = dict(defaults)
+    for field, env_key in DEFAULT_MODEL_ENV_OVERRIDES.items():
+        candidate = (environment.get(env_key) or "").strip()
+        if not candidate:
+            continue
+        if candidate not in known:
+            logger.warning(
+                "%s=%r is not a known model id; keeping catalog default %r for %s",
+                env_key, candidate, resolved.get(field), field,
+            )
+            continue
+        resolved[field] = candidate
+    return resolved
+
+
 def get_default_model_settings(catalog_root: Optional[Path] = None) -> DefaultModelSettings:
     catalog = build_catalog_dict(catalog_root or MODEL_CATALOG_ROOT)
-    defaults = catalog["defaults"]["model_settings"]
+    defaults = apply_default_model_overrides(
+        catalog["defaults"]["model_settings"],
+        catalog["models"].keys(),
+    )
     return DefaultModelSettings(
         t2i_model=defaults["t2i_model"],
         i2i_model=defaults["i2i_model"],
